@@ -1,0 +1,23 @@
+{
+  "name": "botboss-demo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/gabrielsimplicio00/botboss-demo.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gabrielsimplicio00/botboss-demo/issues"
+  },
+  "homepage": "https://github.com/gabrielsimplicio00/botboss-demo#readme",
+  "type": "module",
+  "dependencies": {
+    "puppeteer": "^20.8.3"
+  }
+}
