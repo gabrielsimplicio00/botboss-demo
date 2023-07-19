@@ -1,0 +1,1 @@
+A Bot demo made for studying purposes, using puppeteer
