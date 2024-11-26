@@ -1,95 +1,84 @@
 import puppeteer from "puppeteer";
-import fs from "fs";
+import fs from "fs/promises";
 
 (async () => {
-  // Launch the browser and open a new blank page
-  const browser = await puppeteer.launch({
-    headless: false,
-    slowMo: 20,
-  });
-
+  const browser = await puppeteer.launch({ headless: false, slowMo: 20 });
   const page = await browser.newPage();
 
   const nomeArquivo = "turtles-data.json";
 
-  fs.access(nomeArquivo, fs.constants.F_OK, (err) => {
-    if (err) {
-      console.error(`O arquivo "${nomeArquivo}" não existe.`);
-    } else {
-      // Se o arquivo turtles-data.json existe, exclua-o antes de começar a coleta de dados
-      fs.unlink(nomeArquivo, (err) => {
-        if (err) {
-          console.error(`Erro ao excluir o arquivo "${nomeArquivo}": ${err}`);
-        } else {
-          console.log(`O arquivo "${nomeArquivo}" foi excluído com sucesso.`);
-        }
-      });
-    }
-  });
-
-  const url = "https://www.scrapethissite.com/pages/frames/";
-  await page.goto(url);
-
-  // Set screen size
+  await ensureFileRemoved(nomeArquivo);
+  await page.goto("https://www.scrapethissite.com/pages/frames/");
   await page.setViewport({ width: 1080, height: 1024 });
 
-  // a aplicação entra no contexto do iframe
-  const iframeElement = await page.$("iframe");
-  const iframe = await iframeElement.contentFrame();
+  const iframe = await getIframe(page, "iframe");
+  const turtleUrls = await collectTurtleUrls(iframe);
 
-  const elements = await iframe.$$(".turtle-family-card"); // Use o seletor correto para os links dentro do iframe
-
-  const urlsArray = [];
-
-  for (let element of elements) {
-    let learnMoreBtn = await element.$(".btn");
-
-    let href = await learnMoreBtn.evaluate((el) => el.getAttribute("href"));
-
-    urlsArray.push(`https://www.scrapethissite.com${href}`);
-  }
-
-  const dataArray = [];
-
-  for (let url of urlsArray) {
-    let newPage = await browser.newPage();
-
-    await newPage.goto(url, {
-      waitUntil: "domcontentloaded",
-    });
-
-    await handleData(newPage, dataArray);
-
-    await newPage.close();
-  }
-
-  const JSONData = JSON.stringify(dataArray, null, 2);
-
-  // cria um arquivo JSON e escreve os dados das tartarugas nesse arquivo
-  fs.writeFile(nomeArquivo, JSONData, (err) => {
-    if (err) {
-      console.error("Erro ao salvar o arquivo:", err);
-    } else {
-      console.log(`Dados salvos com sucesso no arquivo ${nomeArquivo}`);
-    }
-  });
+  const turtleData = await scrapeTurtleData(browser, turtleUrls);
+  await saveDataToFile(nomeArquivo, turtleData);
 
   await browser.close();
 })();
 
-async function handleData(newPage, dataArray) {
-  let name = await newPage.waitForSelector(".family-name");
-  let nameContent = await name.evaluate((el) => el.textContent);
+async function ensureFileRemoved(filename) {
+  try {
+    await fs.access(filename);
+    await fs.unlink(filename);
+    console.log(`File "${filename}" removed successfully.`);
+  } catch {
+    console.log(`File "${filename}" does not exist, skipping removal.`);
+  }
+}
 
-  let lead = await newPage.waitForSelector(".lead");
-  let descriptionContent = await lead.evaluate((el) => el.textContent);
+async function getIframe(page, selector) {
+  const iframeElement = await page.waitForSelector(selector);
+  return iframeElement.contentFrame();
+}
 
-  let turtleImg = await newPage.waitForSelector(".turtle-image");
-  let imgUrl = await turtleImg.evaluate((el) => el.getAttribute("src"));
+async function collectTurtleUrls(iframe) {
+  const elements = await iframe.$$(".turtle-family-card");
+  const urls = [];
 
-  dataArray.push({
-    species: nameContent,
-    description: descriptionContent.trim(),
-    imageUrl: imgUrl,
-  });
+  for (const element of elements) {
+    const learnMoreBtn = await element.$(".btn");
+    const href = await learnMoreBtn.evaluate((el) => el.getAttribute("href"));
+    urls.push(`https://www.scrapethissite.com${href}`);
+  }
+
+  return urls;
+}
+
+async function scrapeTurtleData(browser, urls) {
+  const data = [];
+
+  for (const url of urls) {
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+
+    const turtleInfo = await extractTurtleData(page);
+    data.push(turtleInfo);
+
+    await page.close();
+  }
+
+  return data;
+}
+
+async function extractTurtleData(page) {
+  const name = await page.$eval(".family-name", (el) => el.textContent.trim());
+  const description = await page.$eval(".lead", (el) => el.textContent.trim());
+  const imageUrl = await page.$eval(".turtle-image", (el) => el.getAttribute("src"));
+
+  return { species: name, description, imageUrl };
+}
+
+async function saveDataToFile(filename, data) {
+  const jsonData = JSON.stringify(data, null, 2);
+
+  try {
+    await fs.writeFile(filename, jsonData);
+    console.log(`Data successfully saved to ${filename}`);
+  } catch (error) {
+    console.error(`Error saving file: ${error.message}`);
+  }
 }
